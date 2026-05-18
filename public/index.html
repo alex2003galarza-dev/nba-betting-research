@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBA Betting Research</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3348;
+    --text: #e8eaf0;
+    --text2: #8b90a8;
+    --text3: #555c7a;
+    --green: #3ecf8e;
+    --green-bg: rgba(62,207,142,0.1);
+    --red: #f87171;
+    --red-bg: rgba(248,113,113,0.1);
+    --amber: #fbbf24;
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,0.1);
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .app { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: var(--text2); margin-bottom: 20px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; background: var(--green-bg); color: var(--green); margin-left: 8px; vertical-align: middle; }
+  .badge-playoff { background: rgba(251,191,36,0.15); color: var(--amber); }
+
+  .search-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .search-row input, .search-row select { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 8px 12px; font-size: 13px; outline: none; }
+  .search-row input { flex: 1; }
+  .search-row input:focus, .search-row select:focus { border-color: var(--blue); }
+  .search-row select { width: 160px; }
+  .search-row select option { background: var(--surface); }
+
+  .section-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .player-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 24px; max-height: 320px; overflow-y: auto; padding-right: 4px; }
+  .player-grid::-webkit-scrollbar { width: 4px; }
+  .player-grid::-webkit-scrollbar-track { background: var(--surface); }
+  .player-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .player-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; cursor: pointer; background: var(--surface); transition: all .15s; }
+  .player-card:hover { border-color: var(--blue); background: var(--surface2); }
+  .player-card.selected { border-color: var(--blue); background: var(--blue-bg); }
+  .player-card.selected .pc-name { color: var(--blue); }
+  .pc-name { font-size: 13px; font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc-meta { font-size: 11px; color: var(--text2); }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 12px; }
+  .panel-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+
+  .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin-bottom: 4px; }
+  .stat-card { background: var(--surface2); border-radius: var(--radius); padding: 12px; }
+  .sc-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .sc-val { font-size: 22px; font-weight: 700; }
+  .sc-sub { font-size: 11px; margin-top: 3px; }
+  .up { color: var(--green); } .dn { color: var(--red); } .nt { color: var(--text2); }
+
+  .prop-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .prop-row label { font-size: 12px; color: var(--text2); min-width: 135px; }
+  .prop-row label.active-label { color: var(--blue); font-weight: 600; }
+  .prop-row input[type=number] { width: 80px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 6px 10px; font-size: 13px; outline: none; }
+  .prop-row input[type=number]:focus { border-color: var(--blue); }
+  .prop-bar { height: 6px; border-radius: 3px; background: var(--border); flex: 1; min-width: 60px; overflow: hidden; }
+  .prop-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .pct-text { font-size: 12px; font-weight: 600; min-width: 60px; }
+  .btn-color { font-size: 11px; padding: 3px 10px; border-radius: 20px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); transition: all .15s; }
+  .btn-color.on { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 8px 10px; font-size: 10px; color: var(--text3); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; font-weight: 500; }
+  td { padding: 8px 10px; border-bottom: 1px solid rgba(46,51,72,0.5); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .cell-hit  { background: rgba(62,207,142,0.18) !important; color: var(--green) !important; font-weight: 700 !important; }
+  .cell-miss { background: rgba(248,113,113,0.18) !important; color: var(--red)   !important; font-weight: 700 !important; }
+  .cell-push { background: rgba(251,191,36,0.18)  !important; color: var(--amber) !important; font-weight: 700 !important; }
+  .row-over  { background: rgba(62,207,142,0.04); }
+  .row-under { background: rgba(248,113,113,0.04); }
+  .col-active { background: rgba(96,165,250,0.06); }
+  .recent-marker { border-left: 3px solid var(--blue) !important; }
+  .th-active { color: var(--blue) !important; }
+  .playoff-row td { font-style: italic; }
+  .playoff-tag { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: rgba(251,191,36,0.15); color: var(--amber); margin-left: 4px; vertical-align: middle; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .leg { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; }
+  .active-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--blue-bg); color: var(--blue); margin-bottom: 10px; }
+
+  .empty { text-align: center; padding: 32px; color: var(--text2); font-size: 13px; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .err { color: var(--red); font-size: 12px; padding: 8px 0; }
+  .source-note { font-size: 10px; color: var(--text3); margin-top: 12px; }
+  .season-toggle { display: flex; gap: 6px; margin-bottom: 16px; }
+  .stog { padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; cursor: pointer; background: var(--surface); color: var(--text2); }
+  .stog.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); font-weight: 600; }
+  .summary-bar { display: flex; gap: 16px; font-size: 12px; color: var(--text2); margin-bottom: 12px; flex-wrap: wrap; }
+  .summary-bar span { display: flex; align-items: center; gap: 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>NBA Betting Research <span class="badge">stats.nba.com</span></h1>
+  <p class="subtitle">Official NBA stats — last 14 games including playoffs — prop line color coder</p>
+
+  <div class="search-row">
+    <input type="text" id="searchInput" placeholder="Search players..." oninput="filterPlayers()">
+    <select id="teamFilter" onchange="filterPlayers()"><option value="">All teams</option></select>
+    <select id="seasonSelect" onchange="reloadPlayer()">
+  <option value="2025-26">2025-26 (Current)</option>
+  <option value="2024-25">2024-25</option>
+  <option value="2023-24">2023-24</option>
+</select>
+  </div>
+
+  <div id="statusMsg"></div>
+  <div class="section-label">Select a player</div>
+  <div class="player-grid" id="playerGrid"><div class="empty"><span class="spinner"></span>Loading NBA roster...</div></div>
+  <div id="playerDetail"></div>
+</div>
+
+<script>
+const BASE = 'http://localhost:3000';
+
+// NBA official stat columns from stats.nba.com playergamelog
+// Headers returned: SEASON_ID,Player_ID,Game_ID,GAME_DATE,MATCHUP,WL,MIN,FGM,FGA,FG_PCT,FG3M,FG3A,FG3_PCT,FTM,FTA,FT_PCT,OREB,DREB,REB,AST,STL,BLK,TOV,PF,PTS,PLUS_MINUS,VIDEO_AVAILABLE
+const STAT_COLS  = ['PTS','REB','AST','FG3M','STL','BLK','TOV','MIN'];
+const STAT_LABELS = { PTS:'Points', REB:'Rebounds', AST:'Assists', FG3M:'3-Pointers', STL:'Steals', BLK:'Blocks', TOV:'Turnovers', MIN:'Minutes' };
+const PROPS = [
+  { label: 'Points',        key: 'PTS'  },
+  { label: 'Rebounds',      key: 'REB'  },
+  { label: 'Assists',       key: 'AST'  },
+  { label: '3-Pointers',    key: 'FG3M' },
+  { label: 'Steals+Blocks', key: 'SB'   },
+  { label: 'Pts+Reb+Ast',   key: 'PRA'  },
+];
+
+let players    = [];
+let selected   = null;
+let gameLog    = [];
+let propLines  = {};
+let activeProp = null;
+
+async function apiFetch(path) {
+  const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── Load full NBA roster ───────────────────────────────────────────────────
+
+async function loadRoster() {
+  document.getElementById('playerGrid').innerHTML = '<div class="empty"><span class="spinner"></span>Loading NBA roster...</div>';
+  document.getElementById('playerDetail').innerHTML = '';
+  document.getElementById('statusMsg').innerHTML = '';
+
+  try {
+    players = await apiFetch('/api/nba/players');
+    if (!players.length) throw new Error('empty');
+    players.sort((a, b) => a.name.localeCompare(b.name));
+    populateTeams();
+    filterPlayers();
+  } catch(e) {
+    document.getElementById('statusMsg').innerHTML = `<p class="err">⚠ Could not load roster: ${e.message}</p>`;
+    document.getElementById('playerGrid').innerHTML = '<div class="empty">Could not load players</div>';
+  }
+}
+
+function populateTeams() {
+  const sel   = document.getElementById('teamFilter');
+  const teams = [...new Set(players.map(p => p.team).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All teams</option>' + teams.map(t => `<option>${t}</option>`).join('');
+}
+
+function filterPlayers() {
+  const q    = document.getElementById('searchInput').value.toLowerCase();
+  const team = document.getElementById('teamFilter').value;
+  const list = players.filter(p =>
+    p.name.toLowerCase().includes(q) && (!team || p.team === team)
+  );
+  const grid = document.getElementById('playerGrid');
+  if (!list.length) { grid.innerHTML = '<div class="empty">No players found</div>'; return; }
+  grid.innerHTML = list.map(p => `
+    <div class="player-card${selected?.id === p.id ? ' selected' : ''}" onclick="selectPlayer(${p.id})">
+      <div class="pc-name">${p.name}</div>
+      <div class="pc-meta">${p.team || '—'}</div>
+    </div>`).join('');
+}
+
+function reloadPlayer() {
+  if (selected) selectPlayer(selected.id);
+}
+
+// ── Load player game log ───────────────────────────────────────────────────
+
+async function selectPlayer(id) {
+  selected   = players.find(p => p.id === id);
+  propLines  = {};
+  activeProp = null;
+  filterPlayers();
+
+  const season = document.getElementById('seasonSelect').value;
+  document.getElementById('playerDetail').innerHTML = `
+    <div class="panel">
+      <div class="empty"><span class="spinner"></span>Loading ${selected.name}'s game log from stats.nba.com...</div>
+    </div>`;
+
+  try {
+    const data = await apiFetch(`/api/nba/gamelog/${id}?season=${season}`);
+    gameLog = data.games;
+
+    if (!gameLog.length) {
+      document.getElementById('playerDetail').innerHTML = `
+        <div class="panel"><p class="err">⚠ No games found for ${selected.name} in the ${season} season.</p></div>`;
+      return;
+    }
+
+    renderDetail(data.totalPlayoffs > 0);
+  } catch(e) {
+    document.getElementById('playerDetail').innerHTML = `
+      <div class="panel"><p class="err">⚠ Error loading game log: ${e.message}</p></div>`;
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function rnd(n, d = 1) {
+  return typeof n !== 'number' || isNaN(n) ? '—' : parseFloat(n.toFixed(d));
+}
+
+function numericVals(key) {
+  return gameLog.filter(g => typeof getStat(g, key) === 'number');
+}
+
+function avg14(key) {
+  const games = gameLog.filter(g => getStat(g, key) !== null);
+  if (!games.length) return '—';
+  return rnd(games.reduce((s, g) => s + getStat(g, key), 0) / games.length);
+}
+
+function avg5(key) {
+  const games = gameLog.slice(-5).filter(g => getStat(g, key) !== null);
+  if (!games.length) return '—';
+  return rnd(games.reduce((s, g) => s + getStat(g, key), 0) / games.length);
+}
+
+function getStat(game, key) {
+  if (key === 'SB')  return (game.STL  || 0) + (game.BLK || 0);
+  if (key === 'PRA') return (game.PTS  || 0) + (game.REB || 0) + (game.AST || 0);
+  const v = game[key];
+  return typeof v === 'number' ? v : null;
+}
+
+function evalResult(game, propKey, line) {
+  if (line === '' || line === null || line === undefined) return null;
+  const t = parseFloat(line);
+  if (isNaN(t)) return null;
+  const v = getStat(game, propKey);
+  if (v === null) return null;
+  if (Math.abs(v - t) < 0.001) return 'push';
+  return v > t ? 'hit' : 'miss';
+}
+
+function setActive(key) {
+  activeProp = activeProp === key ? null : key;
+  renderDetail();
+}
+
+function isPlayoff(game) {
+  // NBA MATCHUP format: "CLE vs. DET" or "CLE @ DET"
+  // SEASON_ID starts with 4 for playoffs, 2 for regular season
+  return game.SEASON_ID && String(game.SEASON_ID).startsWith('4');
+}
+
+function fmtMatchup(game) {
+  // "CLE vs. DET" → just return as-is, already short
+  return game.MATCHUP || '—';
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+
+function renderDetail(hasPlayoffs) {
+  const p    = selected;
+  const cols = STAT_COLS;
+
+  // Stat summary cards
+  const cards = cols.slice(0, 5).map(k => {
+    const a = avg14(k), b = avg5(k);
+    let cls = 'nt', arr = '→';
+    if (typeof a === 'number' && typeof b === 'number') {
+      if (b > a) { cls = 'up'; arr = '↑'; }
+      else if (b < a) { cls = 'dn'; arr = '↓'; }
+    }
+    return `<div class="stat-card">
+      <div class="sc-label">${STAT_LABELS[k] || k} avg</div>
+      <div class="sc-val">${a}</div>
+      <div class="sc-sub ${cls}">${arr} L5: ${b}</div>
+    </div>`;
+  }).join('');
+
+  // Prop checker
+  const propRows = PROPS.map(prop => {
+    const { label, key } = prop;
+    const line     = propLines[key] ?? '';
+    const isActive = activeProp === key;
+    let extra = '<span style="font-size:11px;color:var(--text3)">enter a line</span>';
+
+    if (line !== '' && !isNaN(parseFloat(line))) {
+      const t      = parseFloat(line);
+      const total  = gameLog.length;
+      const hits   = gameLog.filter(g => { const v = getStat(g, key); return v !== null && v > t; }).length;
+      const pushes = gameLog.filter(g => { const v = getStat(g, key); return v !== null && Math.abs(v - t) < 0.001; }).length;
+      const pct    = Math.round(hits / total * 100);
+      const color  = pct >= 65 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)';
+      extra = `
+        <div class="prop-bar"><div class="prop-fill" style="width:${pct}%;background:${color}"></div></div>
+        <span class="pct-text" style="color:${color}">${pct}% (${hits}/${total})</span>
+        ${pushes ? `<span style="font-size:11px;color:var(--amber)">${pushes} push</span>` : ''}
+        <button class="btn-color${isActive ? ' on' : ''}" onclick="setActive('${key}')">
+          ${isActive ? '✓ on' : 'color table'}
+        </button>`;
+    }
+
+    return `<div class="prop-row">
+      <label class="${isActive ? 'active-label' : ''}">${isActive ? '→ ' : ''}${label}</label>
+      <input type="number" step="0.5" min="0" value="${line}" placeholder="line"
+        oninput="propLines['${key}']=this.value;if(this.value)activeProp='${key}';renderDetail()">
+      ${extra}
+    </div>`;
+  }).join('');
+
+  // Game log table
+  const activeStatCol = activeProp && cols.includes(activeProp) ? activeProp : null;
+
+  const rows = gameLog.map((g, i) => {
+    const recent   = i >= gameLog.length - 5;
+    const playoff  = isPlayoff(g);
+    const result   = activeProp ? evalResult(g, activeProp, propLines[activeProp]) : null;
+    const rowCls   = [
+      result === 'hit' ? 'row-over' : result === 'miss' ? 'row-under' : '',
+      playoff ? 'playoff-row' : ''
+    ].filter(Boolean).join(' ');
+
+    const cells = cols.map(col => {
+      const v       = getStat(g, col);
+      const display = v !== null ? v : '—';
+      let cls = '';
+
+      if (activeProp) {
+        const isActiveCol = col === activeStatCol ||
+          (activeProp === 'SB'  && (col === 'STL' || col === 'BLK')) ||
+          (activeProp === 'PRA' && (col === 'PTS' || col === 'REB' || col === 'AST'));
+        if (isActiveCol) {
+          const r = evalResult(g, activeProp, propLines[activeProp]);
+          cls = r === 'hit' ? 'cell-hit' : r === 'miss' ? 'cell-miss' : r === 'push' ? 'cell-push' : '';
+        }
+      }
+      if (!cls && activeStatCol === col) cls = 'col-active';
+
+      return `<td class="${cls}" style="${recent && !cls ? 'font-weight:600' : ''}">${display}</td>`;
+    }).join('');
+
+    // Format date nicely
+    const dateStr = g.GAME_DATE ? fmtNBADate(g.GAME_DATE) : '—';
+    const wl      = g.WL || '—';
+    const wlColor = wl === 'W' ? 'var(--green)' : wl === 'L' ? 'var(--red)' : 'var(--text2)';
+
+    return `<tr class="${rowCls}">
+      <td class="${recent ? 'recent-marker' : ''}" style="color:var(--text2);font-size:11px">
+        ${dateStr}${playoff ? '<span class="playoff-tag">PO</span>' : ''}
+      </td>
+      <td style="color:var(--text2);font-size:11px">${fmtMatchup(g)}</td>
+      <td><span style="font-size:10px;font-weight:700;color:${wlColor}">${wl}</span></td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  // Legend
+  const showLegend     = activeProp && propLines[activeProp] !== '' && propLines[activeProp] !== undefined;
+  const activePropName = activeProp ? (PROPS.find(p => p.key === activeProp)?.label || activeProp) : '';
+  const playoffCount   = gameLog.filter(isPlayoff).length;
+
+  const legend = showLegend ? `
+    <div class="active-pill">▶ ${activePropName} line: ${propLines[activeProp]}</div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:rgba(62,207,142,0.3);border:1px solid var(--green)"></div>Crushed (over)</div>
+      <div class="leg"><div class="leg-dot" style="background:rgba(248,113,113,0.3);border:1px solid var(--red)"></div>Missed (under)</div>
+      <div class="leg"><div class="leg-dot" style="background:rgba(251,191,36,0.3);border:1px solid var(--amber)"></div>Push (exact)</div>
+      ${playoffCount ? `<div class="leg" style="color:var(--amber)">PO = Playoff game</div>` : ''}
+      <div class="leg" style="font-size:11px;color:var(--text3)">Blue left border = last 5 games</div>
+    </div>` :
+    `<p style="font-size:11px;color:var(--text2);margin-bottom:10px">
+      Set a line above → click <strong>color table</strong> to highlight hits and misses
+    </p>`;
+
+  const thCols = cols.map(k => `<th class="${activeStatCol === k ? 'th-active' : ''}">${k}</th>`).join('');
+
+  document.getElementById('playerDetail').innerHTML = `
+    <div class="panel">
+      <div class="panel-title">
+        ${p.name}
+        <span style="font-size:12px;font-weight:400;color:var(--text2)">${p.team}</span>
+        ${playoffCount ? `<span class="badge badge-playoff">${playoffCount} playoff game${playoffCount > 1 ? 's' : ''}</span>` : ''}
+      </div>
+      <div class="stat-cards">${cards}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Prop line checker</div>
+      <p style="font-size:11px;color:var(--text2);margin-bottom:12px">
+        Enter a line → see how often they went over in the last ${gameLog.length} games → click <strong>color table</strong>
+      </p>
+      ${propRows}
+    </div>
+    <div class="panel">
+      <div class="panel-title">Last ${gameLog.length} games</div>
+      ${legend}
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Matchup</th><th>W/L</th>${thCols}
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p class="source-note">Data: stats.nba.com — Official NBA Stats API</p>
+    </div>`;
+}
+function fmtNBADate(str) {
+  // NBA returns dates as "NOV 13, 2024" or "2024-11-13"
+  if (!str) return '—';
+  const d = new Date(str.includes(',') ? str : str + 'T12:00:00');
+  return isNaN(d) ? str : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+// ── Init ───────────────────────────────────────────────────────────────────
+
+loadRoster();
+</script>
+</body>
+</html>
