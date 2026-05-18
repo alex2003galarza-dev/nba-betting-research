@@ -36,7 +36,10 @@ function parseResultSet(data, index = 0) {
   });
 }
 
-// All NBA team IDs (30 teams)
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 const NBA_TEAMS = [
   { id: 1610612737, abbr: 'ATL' }, { id: 1610612738, abbr: 'BOS' },
   { id: 1610612751, abbr: 'BKN' }, { id: 1610612766, abbr: 'CHA' },
@@ -55,42 +58,42 @@ const NBA_TEAMS = [
   { id: 1610612762, abbr: 'UTA' }, { id: 1610612764, abbr: 'WAS' },
 ];
 
-// Cache roster so we don't re-fetch on every request
+// Cache roster for 1 hour
 let rosterCache = null;
 let rosterCacheTime = 0;
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const CACHE_TTL = 60 * 60 * 1000;
+
+// Cache game logs per player for 30 minutes
+const gameLogCache = {};
+const GAMELOG_TTL = 30 * 60 * 1000;
 
 async function getAllPlayers() {
   if (rosterCache && Date.now() - rosterCacheTime < CACHE_TTL) {
     return rosterCache;
   }
 
-  console.log('[NBA] Fetching all team rosters...');
+  console.log('[NBA] Fetching all team rosters one at a time...');
   const allPlayers = [];
 
-  // Fetch all rosters in parallel, 6 at a time to avoid rate limiting
-  for (let i = 0; i < NBA_TEAMS.length; i += 6) {
-    const batch = NBA_TEAMS.slice(i, i + 6);
-    await Promise.all(batch.map(async team => {
-      try {
-        const url = `https://stats.nba.com/stats/commonteamroster?TeamID=${team.id}&Season=2025-26`;
-        const data = await nbaFetch(url);
-        const rows = parseResultSet(data);
-        rows.forEach(p => {
-          allPlayers.push({
-            id: p.PLAYER_ID,
-            name: p.PLAYER,
-            team: team.abbr,
-            pos: p.POSITION || '',
-            num: p.NUM || '',
-          });
+  for (const team of NBA_TEAMS) {
+    try {
+      const url = `https://stats.nba.com/stats/commonteamroster?TeamID=${team.id}&Season=2025-26`;
+      const data = await nbaFetch(url);
+      const rows = parseResultSet(data);
+      rows.forEach(p => {
+        allPlayers.push({
+          id: p.PLAYER_ID,
+          name: p.PLAYER,
+          team: team.abbr,
+          pos: p.POSITION || '',
+          num: p.NUM || '',
         });
-      } catch(e) {
-        console.log(`  Failed roster for ${team.abbr}: ${e.message}`);
-      }
-    }));
-    // Small delay between batches to be nice to the API
-    if (i + 6 < NBA_TEAMS.length) await new Promise(r => setTimeout(r, 200));
+      });
+    } catch(e) {
+      console.log(`  Failed roster for ${team.abbr}: ${e.message}`);
+    }
+    // Wait 300ms between each team to avoid rate limiting
+    await sleep(300);
   }
 
   allPlayers.sort((a, b) => a.name.localeCompare(b.name));
@@ -101,7 +104,7 @@ async function getAllPlayers() {
   return allPlayers;
 }
 
-// GET /api/nba/players — returns full roster of all 30 teams
+// GET /api/nba/players
 app.get('/api/nba/players', async (req, res) => {
   try {
     const players = await getAllPlayers();
@@ -113,10 +116,19 @@ app.get('/api/nba/players', async (req, res) => {
   }
 });
 
-// GET /api/nba/gamelog/:playerId — regular season + playoffs merged
+// GET /api/nba/gamelog/:playerId
 app.get('/api/nba/gamelog/:playerId', async (req, res) => {
   const { playerId } = req.params;
   const season = req.query.season || '2025-26';
+  const cacheKey = `${playerId}-${season}`;
+
+  // Return cached game log if fresh
+  if (gameLogCache[cacheKey] && Date.now() - gameLogCache[cacheKey].time < GAMELOG_TTL) {
+    console.log(`[CACHE] Returning cached gamelog for ${playerId}`);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.json(gameLogCache[cacheKey].data);
+  }
+
   const base = `https://stats.nba.com/stats/playergamelog?PlayerID=${playerId}&Season=${season}`;
 
   async function fetchSeasonType(type) {
@@ -137,26 +149,40 @@ app.get('/api/nba/gamelog/:playerId', async (req, res) => {
   }
 
   try {
-    const [regular, playoffs] = await Promise.all([
-      fetchSeasonType('Regular Season'),
-      fetchSeasonType('Playoffs'),
-    ]);
+    async function fetchWithRetry(type) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const result = await fetchSeasonType(type);
+    if (result.length > 0 || attempt === 3) return result;
+    console.log(`  Retrying ${type} attempt ${attempt + 1}...`);
+    await sleep(500);
+  }
+  return [];
+}
+
+const [regular, playoffs] = await Promise.all([
+  fetchWithRetry('Regular Season'),
+  fetchWithRetry('Playoffs'),
+]);
 
     const all = [...regular, ...playoffs];
     if (!all.length) {
       return res.status(404).json({ error: 'No games found' });
     }
 
-    // Sort newest first, take last 14, reverse for display
     all.sort((a, b) => new Date(b.GAME_DATE) - new Date(a.GAME_DATE));
     const last14 = all.slice(0, 14).reverse();
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.json({
+    const result = {
       games: last14,
       totalRegular: regular.length,
       totalPlayoffs: playoffs.length,
-    });
+    };
+
+    // Store in cache
+    gameLogCache[cacheKey] = { data: result, time: Date.now() };
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(result);
   } catch(e) {
     console.error(e.message);
     res.status(500).json({ error: e.message });
@@ -166,7 +192,7 @@ app.get('/api/nba/gamelog/:playerId', async (req, res) => {
 // Debug endpoint
 app.get('/api/nba/debug/:playerId', async (req, res) => {
   const { playerId } = req.params;
-  const season = req.query.season || '2024-25';
+  const season = req.query.season || '2025-26';
   const type = req.query.type || 'Playoffs';
   try {
     const url = `https://stats.nba.com/stats/playergamelog?PlayerID=${playerId}&Season=${season}&SeasonType=${encodeURIComponent(type)}`;
@@ -189,5 +215,5 @@ app.get('/api/nba/debug/:playerId', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`\n✅ NBA Betting Research Tool — http://localhost:${PORT}`);
-  console.log(`   Fetching rosters from stats.nba.com on first load...\n`);
+  console.log(`   Rosters will load on first request (~10 seconds)\n`);
 });
